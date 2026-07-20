@@ -1,0 +1,6 @@
+# name          switch   type   values
+re_insertion    "--ri "  i      (0, 1)
+insertion_im    "--im "  i      (0, 1)
+two_swap        "--ts "  i      (0, 1)
+iterations      "--i "   c      (50, 70, 100) 
+disturbance     "--p "   c      (0.01, 0.02, 0.03, 0.04, 0.05)
