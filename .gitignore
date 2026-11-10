@@ -1,8 +1,25 @@
-.vscode/
-pmstr-basecases/
-Run.exe
-Main.exe
-nohup.out
+# Executáveis e artefatos de compilação
 Main
+Main.exe
 Run
+Run.exe
+target-runner
+target-runner.exe
+*.o
+*.out
 
+# Arquivos gerados pelo irace / R
+*.Rdata
+*.RData
+.Rhistory
+
+# Logs e saídas de execução
+nohup.out
+*.log
+
+# Diretórios de IDE, sistema e temporários
+.vscode/
+.idea/
+__pycache__/
+.DS_Store
+pmstr-basecases/

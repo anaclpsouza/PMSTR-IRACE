@@ -1,19 +1,23 @@
 #include "ObjectiveFunction.h"
-#include <vector>
+
 #include <algorithm>
-#include <map>
-#include <cstdlib>
-#include "Operation.h"
 #include <climits>
 #include <limits>
+#include <map>
+#include <vector>
+#include "Operation.h"
 
 using namespace std;
 
+/**
+ * Localiza o índice da primeira máquina que contém alguma operação do job informado.
+ */
 int maquinaPai(int idJob, const std::vector<std::vector<Operation>> &maquina)
 {
     for (int i = 0; i < maquina.size(); ++i)
     {
-        auto it = std::find_if(maquina[i].begin(), maquina[i].end(), [idJob](const Operation &op)
+        auto it = std::find_if(maquina[i].begin(), maquina[i].end(),
+                               [idJob](const Operation &op)
                                { return op.idJob == idJob; });
 
         if (it != maquina[i].end())
@@ -41,7 +45,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         return INT_MAX;
     }
 
-    // conferindo a regra de precedência na mesma máquina de uma vez
+    // 1. Validação de precedência entre operações de um mesmo job na mesma máquina
     for (int i = 0; i < m; ++i)
     {
         std::map<int, int> ultimaOpDoJob;
@@ -55,19 +59,20 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         }
     }
 
-    double wd = 1.0;  // Peso do atraso
-    double ws = 1.0;  // Peso da troca
-    double tau = 1.0; // Tempo de troca (1 hora)
+    // Pesos e parâmetros da função objetivo
+    double wd = 1.0;  // Peso do atraso (tardiness)
+    double ws = 1.0;  // Peso da troca de ferramentas (setup)
+    double tau = 1.0; // Tempo de troca de ferramentas (1 hora)
 
     int setups = 0;
     double tardiness = 0.0;
     vector<double> tempo(m, 0.0);
-    //tardiness_maq.resize(m, 0.0);
     tardiness_maq.assign(m, 0.0);
 
-    vector<int> u(m, 0); // quantidade de ferramentas atualmente carregadas
+    // 2. Estruturas de controle do magazine de ferramentas (política KTNS)
+    vector<int> u(m, 0); // Capacidade atualmente ocupada no magazine de cada máquina
     vector<vector<int>> carregados(m, vector<int>(t, 0));
-    vector<vector<vector<int>>> magazine(m, vector<vector<int>>(t, vector<int>())); // magazine de presença de ferramentas
+    vector<vector<vector<int>>> magazine(m, vector<vector<int>>(t, vector<int>()));
     vector<vector<vector<int>>> prioridades(m, vector<vector<int>>(t, vector<int>()));
 
     vector<int> setsSize(t);
@@ -82,8 +87,9 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
             maxOpId = op.idOp;
     }
 
-    std::vector<std::vector<double>> tempo_final(maxJobId + 1,
-                                                 std::vector<double>(maxOpId + 1, std::numeric_limits<double>::max()));
+    std::vector<std::vector<double>> tempo_final(
+        maxJobId + 1,
+        std::vector<double>(maxOpId + 1, std::numeric_limits<double>::max()));
 
     for (int i = 0; i < m; ++i)
     {
@@ -105,23 +111,26 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         }
     }
 
-    // Para cada máquina, para cada ferramenta usada pela operacao em cada estágio
-    for (int i = 0; i < m; ++i) // máquina
+    // Marca quais ferramentas são exigidas em cada estágio (operação) de cada máquina
+    for (int i = 0; i < m; ++i)
     {
-        for (int j = 0; j < maquina[i].size(); ++j) // estágio do magazine
+        for (int j = 0; j < maquina[i].size(); ++j)
         {
             magazine[i][maquina[i][j].toolSetId][j] = 1;
         }
     }
 
-    for (int k = 0; k < m; ++k) // máquina
+    // Calcula a matriz de prioridades KTNS (distância até o próximo uso de cada ferramenta)
+    for (int k = 0; k < m; ++k)
     {
-        for (unsigned i = 0; i < t; ++i) // ferramenta
+        for (unsigned i = 0; i < t; ++i)
         {
-            for (unsigned j = 0; j < maquina[k].size(); ++j) // operação
+            for (unsigned j = 0; j < maquina[k].size(); ++j)
             {
-                if (magazine[k][i][j] == 1) // se o estágio atual precisa daquela ferramenta, prioridade zero
+                if (magazine[k][i][j] == 1)
+                {
                     prioridades[k][i][j] = 0;
+                }
                 else
                 {
                     int proxima = 0;
@@ -135,20 +144,19 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                             break;
                         }
                     }
-                    if (usa)
-                        prioridades[k][i][j] = proxima;
-                    else
-                        prioridades[k][i][j] = -1;
+                    prioridades[k][i][j] = usa ? proxima : -1;
                 }
             }
         }
     }
 
-    for (int j = 0; j < m; ++j) // maquina
+    // 3. Carregamento inicial do magazine antes do início do processamento
+    for (int j = 0; j < m; ++j)
     {
-        for (int i = 0; i < maquina[j].size(); i++) // operacao
+        for (int i = 0; i < maquina[j].size(); i++)
         {
-            if (carregados[j][maquina[j][i].toolSetId] == 0 && u[j] + maquina[j][i].toolSetSize <= c)
+            if (carregados[j][maquina[j][i].toolSetId] == 0 &&
+                u[j] + maquina[j][i].toolSetSize <= c)
             {
                 u[j] += maquina[j][i].toolSetSize;
                 carregados[j][maquina[j][i].toolSetId] = 1;
@@ -156,13 +164,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         }
     }
 
-    int max_op = 0;
-    for (int i = 0; i < maquina.size(); ++i)
-    {
-        if (maquina[i].size() > max_op)
-            max_op = maquina[i].size();
-    }
-
+    // 4. Simulação do processamento das operações nas máquinas
     int idxPorMaquina[maquina.size()] = {0};
     vector<int> esperandoPorQuem(maquina.size(), -1);
 
@@ -174,7 +176,6 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         {
             if (idxPorMaquina[i] < maquina[i].size())
             {
-
                 acabei = false;
                 break;
             }
@@ -184,7 +185,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
             break;
         }
 
-        for (int i = 0; i < maquina.size(); i++) // máquinas
+        for (int i = 0; i < maquina.size(); i++)
         {
             int j = idxPorMaquina[i];
 
@@ -195,6 +196,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
             int idOp = maquina[i][j].idOp;
             bool troca = false;
 
+            // Verifica se a operação predecessora do mesmo job já foi concluída
             double tempoPai = 0.0;
             if (idOp > 1)
             {
@@ -210,6 +212,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                         out_espera->push_back(std::make_pair(i, maquina[i][j]));
                     }
 
+                    // Detecção de ciclo de espera (deadlock) entre máquinas
                     for (int z = 0; z < esperandoPorQuem.size(); z++)
                     {
                         if (estado[z] == 0)
@@ -239,13 +242,14 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
 
             idxPorMaquina[i]++;
 
-            // Cálculo do tempo considerando a espera
+            // Instante de início respeitando disponibilidade da máquina, precedência e release time
             tempo[i] = std::max({tempo[i], tempoPai, (double)maquina[i][j].releaseTime});
 
+            // Troca de ferramentas caso o conjunto exigido não esteja carregado no magazine
             if (carregados[i][maquina[i][j].toolSetId] == 0)
             {
                 u[i] += maquina[i][j].toolSetSize;
-                carregados[i][maquina[i][j].toolSetId] = 1; // carrega a ferramenta necessária para a operação atual
+                carregados[i][maquina[i][j].toolSetId] = 1;
                 troca = true;
 
                 while (u[i] > c)
@@ -253,45 +257,43 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                     int maior = 0;
                     int pMaior = -1;
 
-                    for (unsigned k = 0; k < t; ++k) // ferramentas
+                    for (unsigned k = 0; k < t; ++k)
                     {
-                        if (magazine[i][k][j] != 1) // matriz de ferramentas
+                        if (magazine[i][k][j] != 1)
                         {
                             if ((carregados[i][k] == 1) && (prioridades[i][k][j] == -1))
                             {
                                 pMaior = k;
                                 break;
                             }
-                            else
+                            else if ((prioridades[i][k][j] > maior) && carregados[i][k] == 1)
                             {
-                                if ((prioridades[i][k][j] > maior) && carregados[i][k] == 1)
-                                {
-                                    maior = prioridades[i][k][j];
-                                    pMaior = k;
-                                }
+                                maior = prioridades[i][k][j];
+                                pMaior = k;
                             }
                         }
                     }
                     if (pMaior == -1)
                         return INT_MAX;
+
                     carregados[i][pMaior] = 0;
                     u[i] -= setsSize[pMaior];
                 }
             }
+
             if (troca)
             {
                 ++setups;
                 tempo[i] += tau;
             }
 
-            tempo[i] += maquina[i][j].processingTime; // processa a operação (adiciona o processing time)
-
+            tempo[i] += maquina[i][j].processingTime;
             tempo_final[idJob][idOp] = tempo[i];
 
             if (tempo[i] > maquina[i][j].dueDate)
             {
                 double atraso = tempo[i] - maquina[i][j].dueDate;
-                tardiness_maq[i] += atraso; // Acumula na máquina específica
+                tardiness_maq[i] += atraso;
                 tardiness += atraso;
             }
         }
